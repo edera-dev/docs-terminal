@@ -1,0 +1,728 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
+
+:root {
+  --edera-ink: #052f2d;
+  --edera-deep: #003f3d;
+
+  --edera-terminal: #081716;
+  --edera-terminal-2: #012f2d;
+
+  --edera-mint: #effffb;
+  --edera-mint-2: #dff7f0;
+
+  --edera-cyan: #00e5d4;
+  --edera-lime: #b8ff3c;
+
+  --edera-white: #f8fffd;
+  --edera-text: #dff7f0;
+  --edera-muted: #a8cfca;
+
+  --edera-danger: #ff7373;
+  --edera-warning: #ffd166;
+
+  --edera-line: rgba(0, 229, 212, 0.18);
+
+  --font-body:
+    "Space Grotesk",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  --font-mono:
+    "Space Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+}
+
+/* =========================================================
+   Base
+   ========================================================= */
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  margin: 0;
+  padding: 0;
+
+  background: var(--edera-terminal);
+}
+
+html {
+  overflow: hidden;
+  background: var(--edera-terminal);
+}
+
+body {
+  overflow: hidden;
+
+  color: var(--edera-text);
+  font-family: var(--font-body);
+}
+
+#app {
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+/* =========================================================
+   Terminal shell
+   ========================================================= */
+
+.terminal-only {
+  position: relative;
+  isolation: isolate;
+
+  display: flex;
+  flex-direction: column;
+
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+
+  min-width: 0;
+  min-height: 0;
+
+  margin: 0;
+  padding: 20px;
+
+  overflow: hidden;
+
+  background: var(--edera-terminal);
+  color: var(--edera-text);
+
+  font:
+    13px / 1.5
+    var(--font-mono);
+
+  border-top:
+    2px solid var(--edera-cyan);
+
+  box-shadow:
+    inset 0 1px 0 rgba(184, 255, 60, 0.14);
+}
+
+/*
+  Small lime marker on the terminal's top edge.
+*/
+
+.terminal-only::before {
+  content: "";
+
+  position: absolute;
+  z-index: 1;
+
+  top: -2px;
+  right: 20px;
+
+  width: 52px;
+  height: 2px;
+
+  background: var(--edera-lime);
+
+  pointer-events: none;
+}
+
+/* =========================================================
+   Terminal output
+   ========================================================= */
+
+/*
+  The output is the flexible part of the terminal.
+
+  It fills all remaining vertical space between the top of
+  the terminal and the fixed input row at the bottom.
+
+  IMPORTANT:
+  There is deliberately no large top padding or margin here.
+*/
+
+.terminal-only .terminal-output {
+  flex: 1 1 auto;
+
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  margin: 0;
+  padding: 4px 4px 12px;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  color: var(--edera-text);
+
+  font:
+    13px / 1.5
+    var(--font-mono);
+
+  text-align: left;
+
+  white-space: normal;
+  overflow-wrap: anywhere;
+
+  scrollbar-width: thin;
+  scrollbar-color:
+    rgba(0, 229, 212, 0.25)
+    transparent;
+}
+
+/*
+  Every output block begins naturally at the top of the
+  output area.
+
+  Do NOT vertically center output.
+*/
+
+.terminal-only .terminal-output > .terminal-block:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* =========================================================
+   Generic output blocks
+   ========================================================= */
+
+.terminal-block {
+  display: block;
+
+  min-width: 0;
+
+  margin: 0 0 12px;
+  padding: 0;
+
+  color: var(--edera-text);
+}
+
+.terminal-block:last-child {
+  margin-bottom: 0;
+}
+
+/* =========================================================
+   Command lines
+   ========================================================= */
+
+.terminal-command {
+  margin: 0 0 5px;
+
+  color: var(--edera-text);
+
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.terminal-prompt {
+  color: var(--edera-cyan);
+  font-weight: 700;
+}
+
+/* =========================================================
+   Preformatted command output
+   ========================================================= */
+
+.terminal-pre {
+  display: block;
+
+  max-width: 100%;
+  min-width: 0;
+
+  margin: 0;
+  padding: 0;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  color: var(--edera-text);
+
+  font: inherit;
+  line-height: 1.42;
+
+  white-space: pre;
+
+  scrollbar-width: thin;
+  scrollbar-color:
+    rgba(0, 229, 212, 0.22)
+    transparent;
+}
+
+/* =========================================================
+   Terminal input
+   ========================================================= */
+
+/*
+  This row is deliberately NOT flexible.
+
+  The output consumes all spare vertical space, while this
+  row remains anchored to the bottom of the terminal.
+*/
+
+.terminal-only .terminal-input-row {
+  display: flex;
+  align-items: center;
+
+  flex: 0 0 auto;
+
+  width: 100%;
+  min-width: 0;
+
+  min-height: 56px;
+
+  margin: 8px 0 0;
+  padding: 12px 4px 0;
+
+  border-top:
+    1px solid rgba(0, 229, 212, 0.22);
+
+  color: var(--edera-text);
+
+  font:
+    13px / 1.5
+    var(--font-mono);
+}
+
+.terminal-only .terminal-input-row > span {
+  flex: 0 0 auto;
+
+  margin: 0 8px 0 0;
+
+  color: var(--edera-cyan);
+
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+/*
+  Command input.
+
+  No default browser margins, borders, or background.
+*/
+
+.terminal-only #cmd {
+  flex: 1 1 auto;
+
+  width: auto;
+  min-width: 0;
+
+  height: 32px;
+
+  margin: 0;
+  padding: 0;
+
+  border: 0;
+  outline: 0;
+
+  background: transparent;
+  color: var(--edera-white);
+
+  font:
+    inherit;
+
+  line-height: 1.5;
+
+  caret-color: var(--edera-lime);
+}
+
+.terminal-only #cmd::selection {
+  background: rgba(0, 229, 212, 0.25);
+}
+
+.terminal-only #cmd:focus {
+  outline: none;
+}
+
+.terminal-only #cmd:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.terminal-only #cmd::placeholder {
+  color: rgba(168, 207, 202, 0.48);
+}
+
+/* =========================================================
+   Scrollbars
+   ========================================================= */
+
+.terminal-only .terminal-output::-webkit-scrollbar,
+.terminal-only .terminal-pre::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.terminal-only .terminal-output::-webkit-scrollbar-track,
+.terminal-only .terminal-pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal-only .terminal-output::-webkit-scrollbar-thumb,
+.terminal-only .terminal-pre::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 212, 0.22);
+  border-radius: 999px;
+}
+
+.terminal-only .terminal-output::-webkit-scrollbar-thumb:hover,
+.terminal-only .terminal-pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 212, 0.38);
+}
+
+/* =========================================================
+   CLI help
+   ========================================================= */
+
+.cli-help {
+  margin: 2px 0 0;
+  padding: 4px 0;
+
+  color: var(--edera-white);
+  font-family: var(--font-mono);
+}
+
+.cli-help-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+
+  border-bottom:
+    1px solid rgba(0, 229, 212, 0.24);
+}
+
+.cli-help-title {
+  color: var(--edera-cyan);
+
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.cli-help-version {
+  margin-top: 4px;
+
+  color: rgba(223, 247, 240, 0.62);
+
+  font-size: 10px;
+}
+
+.cli-help-description {
+  max-width: 780px;
+  margin-bottom: 22px;
+
+  color: rgba(223, 247, 240, 0.78);
+
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.cli-help-section {
+  display: flex;
+  flex-direction: column;
+
+  gap: 0;
+
+  margin-bottom: 22px;
+}
+
+.cli-help-section-title {
+  margin-bottom: 5px;
+  padding-bottom: 7px;
+
+  border-bottom:
+    1px solid rgba(0, 229, 212, 0.22);
+
+  color: var(--edera-cyan);
+
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+
+  text-transform: uppercase;
+}
+
+.cli-help-command {
+  display: grid;
+
+  grid-template-columns:
+    minmax(260px, 0.9fr)
+    minmax(180px, 1.1fr);
+
+  gap: 24px;
+
+  align-items: start;
+
+  padding: 9px 10px;
+
+  border-bottom:
+    1px solid rgba(223, 247, 240, 0.08);
+
+  border-radius: 5px;
+
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.cli-help-command:hover {
+  background: rgba(0, 229, 212, 0.055);
+
+  border-color:
+    rgba(0, 229, 212, 0.18);
+}
+
+.cli-help-command code {
+  display: inline-block;
+
+  color: var(--edera-lime);
+
+  font:
+    700 10px / 1.5
+    var(--font-mono);
+
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cli-help-command span {
+  color: rgba(223, 247, 240, 0.72);
+
+  font:
+    400 10px / 1.5
+    var(--font-body);
+}
+
+.cli-help-tip {
+  margin-top: 4px;
+  padding: 12px 14px;
+
+  border-left:
+    2px solid var(--edera-cyan);
+
+  border-radius: 0 6px 6px 0;
+
+  background:
+    rgba(0, 229, 212, 0.055);
+
+  color:
+    rgba(223, 247, 240, 0.66);
+
+  font:
+    400 9px / 1.5
+    var(--font-body);
+}
+
+/* =========================================================
+   Status / command output helpers
+   ========================================================= */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+
+  padding: 3px 7px;
+
+  border: 1px solid currentColor;
+  border-radius: 999px;
+
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-ready {
+  color: #8ed14f;
+  background: rgba(184, 255, 60, 0.10);
+}
+
+.status-pending {
+  color: var(--edera-warning);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.status-destroyed {
+  color: rgba(223, 247, 240, 0.52);
+  background: rgba(223, 247, 240, 0.04);
+}
+
+.zone-card-destroyed {
+  border:
+    1px solid var(--edera-danger);
+
+  box-shadow:
+    0 0 0 1px rgba(255, 115, 115, 0.12);
+}
+
+.zone-name-destroyed {
+  text-decoration-line: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--edera-danger);
+
+  opacity: 0.7;
+}
+
+.runtimeclass-badge {
+  display: inline-flex;
+  align-items: center;
+
+  padding: 4px 7px;
+
+  border:
+    1px solid #8ed14f;
+
+  border-radius: 999px;
+
+  background:
+    rgba(184, 255, 60, 0.10);
+
+  color: var(--edera-lime);
+
+  font:
+    700 8px / 1
+    var(--font-mono);
+
+  letter-spacing: 0.05em;
+
+  white-space: nowrap;
+}
+
+/* =========================================================
+   Links
+   ========================================================= */
+
+.terminal-only a {
+  color: var(--edera-cyan);
+
+  text-decoration: underline;
+  text-decoration-color:
+    rgba(0, 229, 212, 0.35);
+
+  text-underline-offset: 2px;
+}
+
+.terminal-only a:hover {
+  color: var(--edera-lime);
+
+  text-decoration-color:
+    var(--edera-lime);
+}
+
+/* =========================================================
+   Output endings
+   ========================================================= */
+
+.terminal-only .terminal-output > .terminal-block:last-child {
+  margin-bottom: 0;
+}
+
+.terminal-only .terminal-output .cli-help-section:last-child {
+  margin-bottom: 0;
+}
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+
+@media (max-width: 720px) {
+  .terminal-only {
+    padding: 14px;
+  }
+
+  .terminal-only::before {
+    right: 14px;
+    width: 40px;
+  }
+
+  .terminal-only .terminal-output {
+    padding: 4px 2px 10px;
+
+    font-size: 12px;
+  }
+
+  .terminal-only .terminal-input-row {
+    min-height: 52px;
+
+    margin-top: 6px;
+    padding: 10px 2px 0;
+
+    font-size: 12px;
+  }
+
+  .terminal-only .terminal-input-row > span {
+    margin-right: 6px;
+  }
+
+  .terminal-only #cmd {
+    height: 30px;
+  }
+
+  .cli-help-command {
+    grid-template-columns: 1fr;
+
+    gap: 3px;
+
+    padding: 9px 6px;
+  }
+
+  .cli-help-command code {
+    font-size: 10px;
+  }
+
+  .cli-help-command span {
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 420px) {
+  .terminal-only {
+    padding: 10px;
+  }
+
+  .terminal-only::before {
+    right: 10px;
+    width: 32px;
+  }
+
+  .terminal-only .terminal-output {
+    font-size: 11px;
+  }
+
+  .terminal-only .terminal-input-row {
+    font-size: 11px;
+  }
+
+  .terminal-only .terminal-input-row > span {
+    margin-right: 5px;
+  }
+}
+
+/* =========================================================
+   Reduced motion
+   ========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
