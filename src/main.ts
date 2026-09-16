@@ -1117,6 +1117,60 @@ vfio_pci`;
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
+  // The demo `curl` command may only reach the in-browser simulated cluster.
+  // The underlying cluster resolves loopback and private IPv4 literals
+  // internally, but any other target (a public hostname, a public IP, or a
+  // link-local address such as 169.254.169.254) falls through to a real
+  // network request from the page. Because this terminal is embedded in
+  // public documentation, we refuse those targets so the widget never issues
+  // outbound requests. `curl` is not required by any guided step, so this only
+  // removes real egress, not demo functionality.
+  const isPrivateIpv4 = (host: string): boolean => {
+    const octets = host.split(".");
+
+    if (octets.length !== 4) {
+      return false;
+    }
+
+    const nums = octets.map((octet) => Number(octet));
+
+    if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      return false;
+    }
+
+    const [a, b] = nums;
+
+    return (
+      a === 127 ||
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  };
+
+  const isSimulatedCurlTarget = (rawTarget: string): boolean => {
+    let parsed: URL;
+
+    try {
+      const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(rawTarget);
+      parsed = new URL(hasScheme ? rawTarget : `http://${rawTarget}`);
+    } catch {
+      return false;
+    }
+
+    const host = parsed.hostname.toLowerCase();
+
+    if (host === "localhost" || host === "::1" || host === "[::1]") {
+      return true;
+    }
+
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      return isPrivateIpv4(host);
+    }
+
+    return false;
+  };
+
   const tokenize = (command: string): string[] => {
     const tokens: string[] = [];
     const regex = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -6002,6 +6056,21 @@ falco-edera-node-7d8f9                   1/1     Running   0          2m</span>`
           const url = rawCmd
             .replace(/^curl\s+/, "")
             .trim();
+
+          if (!isSimulatedCurlTarget(url)) {
+            printHtml(
+              `<span style="color:#ff7373;">curl: (6) Could not resolve host: this demo terminal only reaches the simulated cluster; external requests are disabled.</span>`,
+            );
+
+            addEvent(
+              "Warning",
+              "HttpBlocked",
+              "curl",
+              `Blocked external request: ${url}`,
+            );
+
+            return;
+          }
 
           addEvent(
             "Info",
