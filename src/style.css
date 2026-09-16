@@ -32,11 +32,18 @@
     Monaco,
     Consolas,
     monospace;
-}
 
-/* =========================================================
-   Base
-   ========================================================= */
+  --font-grid:
+    ui-monospace,
+    SFMono-Regular,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    "DejaVu Sans Mono",
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+}
 
 html,
 body,
@@ -75,10 +82,6 @@ input {
   font: inherit;
 }
 
-/* =========================================================
-   Terminal shell
-   ========================================================= */
-
 .terminal-only {
   position: relative;
   isolation: isolate;
@@ -94,18 +97,17 @@ input {
   overflow: hidden;
   background: var(--edera-terminal);
   color: var(--edera-text);
+
   font:
     13px / 1.5
     var(--font-mono);
+
   border-top:
     2px solid var(--edera-cyan);
+
   box-shadow:
     inset 0 1px 0 rgba(184, 255, 60, 0.14);
 }
-
-/*
-  Small lime marker on the terminal's top edge.
-*/
 
 .terminal-only::before {
   content: "";
@@ -132,7 +134,6 @@ input {
   font:
     13px / 1.5
     var(--font-mono);
-
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -152,7 +153,6 @@ input {
   min-width: 0;
   margin: 0 0 12px;
   padding: 0;
-
   color: var(--edera-text);
 }
 
@@ -162,7 +162,9 @@ input {
 
 .terminal-command {
   margin: 0 0 5px;
+
   color: var(--edera-text);
+
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -179,16 +181,32 @@ input {
   min-width: 0;
   margin: 0;
   padding: 0;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   color: var(--edera-text);
   font: inherit;
   line-height: 1.42;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   scrollbar-width: thin;
   scrollbar-color:
     rgba(0, 229, 212, 0.22)
     transparent;
+}
+
+.terminal-pre-grid {
+  overflow-x: auto;
+
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.terminal-pre-box {
+  font-family: var(--font-grid);
+  letter-spacing: 0;
+  font-variant-ligatures: none;
 }
 
 .terminal-only .terminal-input-row {
@@ -275,6 +293,7 @@ input {
 .cli-help {
   margin: 2px 0 0;
   padding: 4px 0;
+
   color: var(--edera-white);
   font-family: var(--font-mono);
 }
@@ -282,12 +301,14 @@ input {
 .cli-help-header {
   margin-bottom: 16px;
   padding-bottom: 12px;
+
   border-bottom:
     1px solid rgba(0, 229, 212, 0.24);
 }
 
 .cli-help-title {
   color: var(--edera-cyan);
+
   font-size: 15px;
   font-weight: 700;
   line-height: 1.3;
@@ -344,6 +365,7 @@ input {
 
 .cli-help-command:hover {
   background: rgba(0, 229, 212, 0.055);
+
   border-color:
     rgba(0, 229, 212, 0.18);
 }
@@ -372,18 +394,13 @@ input {
 .cli-help-tip {
   margin-top: 4px;
   padding: 12px 14px;
-
   border-left:
     2px solid var(--edera-cyan);
-
   border-radius: 0 6px 6px 0;
-
   background:
     rgba(0, 229, 212, 0.055);
-
   color:
     rgba(223, 247, 240, 0.66);
-
   font:
     400 9px / 1.5
     var(--font-body);
@@ -459,7 +476,6 @@ input {
 
 .terminal-only a:hover {
   color: var(--edera-lime);
-
   text-decoration-color:
     var(--edera-lime);
 }
@@ -490,10 +506,8 @@ input {
 
   .terminal-only .terminal-input-row {
     min-height: 52px;
-
     margin-top: 6px;
     padding: 10px 2px 0;
-
     font-size: 12px;
   }
 
@@ -507,9 +521,7 @@ input {
 
   .cli-help-command {
     grid-template-columns: 1fr;
-
     gap: 3px;
-
     padding: 9px 6px;
   }
 
