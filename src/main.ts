@@ -123,6 +123,15 @@ interface ProtectZone {
   targetCpus: number;
   device?: string;
   kernelVariant?: string;
+  // Fields below back the structured (`--output json|yaml|...`) renderings so
+  // that they stay stable across repeated `protect zone list` invocations.
+  domid?: number;
+  mac?: string;
+  minMemory?: number;
+  maxMemory?: number;
+  targetMemory?: number;
+  createdAt?: string;
+  readyAt?: string;
 }
 
 interface ProtectWorkload {
@@ -1019,6 +1028,7 @@ vfio_pci`;
     { name: "kube-system", status: "Active", age: "10m" },
     { name: "kube-public", status: "Active", age: "10m" },
     { name: "kube-node-lease", status: "Active", age: "10m" },
+    { name: "falco", status: "Active", age: "2m" },
   ];
 
   let deployments: LocalDeployment[] = [];
@@ -1036,6 +1046,18 @@ vfio_pci`;
       ip: "10.244.0.5",
       node: "node-2",
       labels: { app: "demo" },
+    },
+    {
+      name: "falco-edera-node-7d8f9",
+      namespace: "falco",
+      status: "Running",
+      age: "2m",
+      image: "falcosecurity/falco:latest",
+      ip: "10.244.0.6",
+      node: "node-1",
+      labels: {
+        "app.kubernetes.io/name": "falco",
+      },
     },
   ];
 
@@ -1100,6 +1122,174 @@ vfio_pci`;
     },
   ];
 
+  // Stable identity and host metadata for the simulated Protect host. These
+  // values mirror the host information exposed by `protect host status` in the
+  // reference terminal, rather than reporting zone/workload counts. Zone and
+  // workload state are exposed by their respective commands.
+  const PROTECT_HOST_ID = "2d31d52f-88b3-426a-bdf5-7248b834e396";
+  const PROTECT_USER_AGENT =
+    "edera-protect-ctl/0.0.0+sha.c92a5e2 tonic/0.14.6";
+  const PROTECT_ADDONS_IMAGE = "/var/lib/edera/protect/zone/addons.squashfs";
+
+  const PROTECT_HOST_STATUS = {
+    uuid: PROTECT_HOST_ID,
+    domain: 0,
+    version: "0.0.0+sha.c92a5e2",
+    branch: "HEAD",
+    lastTag: "v1.11.0",
+    revisionsSinceTag: 181,
+    gitSha1: "c92a5e2b2f63028b021627b62931be89754830f0",
+    ipv4: "10.75.0.1/16",
+    ipv6: "fdd4:1476:6c7e::1/48",
+    ethernetAddress: "d6:52:b4:13:49:a1",
+    hypervisorFreeMemory: 3238346752,
+    hypervisorFreeMemoryMiB: 3088,
+  } as const;
+
+  // Reference output captured from the real Protect host. The simulation uses
+  // these values for the host-oriented diagnostics so the terminal experience
+  // matches the real CLI instead of returning a simplified placeholder.
+  const PROTECT_CPU_TOPOLOGY = `┌────┬──────┬────────┬──────┬────────┬──────────┐
+│ id ┆ node ┆ socket ┆ core ┆ thread ┆ class    │
+╞════╪══════╪════════╪══════╪════════╪══════════╡
+│ 0  ┆ 0    ┆ 0      ┆ 0    ┆ 0      ┆ Standard │
+│ 1  ┆ 0    ┆ 0      ┆ 0    ┆ 1      ┆ Standard │
+└────┴──────┴────────┴──────┴────────┴──────────┘`;
+
+  const PROTECT_ZONE_BOOT_LOGS = `[2026-09-15T12:49:50.462957Z INFO  edera_protect_zone::idm_ring] IDM ring protect-idm-control: session attached (port=23, pages=21)
+[2026-09-15T12:49:50.492670Z INFO  edera_protect_zone::idm_ring] IDM ring protect-idm-bulk: session attached (port=24, pages=261)
+[2026-09-15T12:49:54.556066Z INFO  edera_protect_zone::memory_pressure] starting zone memory pressure event monitor`;
+
+  const buildProtectHvDebugInfo = () => {
+    const activeZones = protectZones.filter(
+      (zone) => zone.state !== "destroyed",
+    );
+
+    const domains = activeZones.map((zone, index) => ({
+      arch: {
+        emulation_flags: 0,
+        misc_flags: 0,
+      },
+      cpu_time: 0,
+      cpupool: 0,
+      domid: zone.domid ?? index + 1,
+      flags: 4294901776,
+      gpaddr_bits: 46,
+      handle: [],
+      max_pages: 263168,
+      max_vcpu_id: 1,
+      number_online_vcpus: 2,
+      outstanding_pages: 0,
+      paged_pages: 0,
+      shared_info_frame: 0,
+      shr_pages: 0,
+      ssidref: 0,
+      total_pages: 131072,
+      vcpu_affinity: [
+        { hard: [0, 1], soft: [0, 1], vcpu: 0 },
+        { hard: [0, 1], soft: [0, 1], vcpu: 1 },
+      ],
+      protect: {
+        name: zone.name,
+        uuid: zone.uuid,
+        zone: {},
+      },
+    }));
+
+    return {
+      domains: [
+        {
+          arch: { emulation_flags: 256, misc_flags: 0 },
+          cpu_time: 0,
+          cpupool: 0,
+          domid: 0,
+          flags: 4294901792,
+          gpaddr_bits: 46,
+          handle: [],
+          max_pages: 2097152,
+          max_vcpu_id: 1,
+          number_online_vcpus: 2,
+          outstanding_pages: 0,
+          paged_pages: 0,
+          shared_info_frame: 0,
+          shr_pages: 0,
+          ssidref: 0,
+          total_pages: 970131,
+          vcpu_affinity: [
+            { hard: [0], soft: [0, 1], vcpu: 0 },
+            { hard: [1], soft: [0, 1], vcpu: 1 },
+          ],
+        },
+        ...domains,
+      ],
+      memmap: [
+        { addr: 0, size: 655360, type: 1 },
+        { addr: 1048576, size: 3149717504, type: 1 },
+        { addr: 3150766080, size: 2621440, type: 2 },
+        { addr: 3153387520, size: 65536, type: 3 },
+        { addr: 3153453056, size: 524288, type: 4 },
+        { addr: 3153977344, size: 66707456, type: 1 },
+        { addr: 3220684800, size: 540672, type: 2 },
+        { addr: 4294967296, size: 5154799616, type: 1 },
+      ],
+      numa: {
+        distance: [10],
+        nodes: [{ memfree_pages: 3238346752, memsize_pages: 9449766912 }],
+      },
+      pci_devices: [],
+      physinfo: {
+        arch_capabilities: 0,
+        capabilities: 786,
+        cores_per_socket: 1,
+        cpu_khz: 2499985,
+        free_pages: 790612,
+        hw_cap: [529267711, 4160369155, 739248128, 289, 15, 3500099499, 8, 256],
+        max_cpu_id: 1,
+        max_mfn: 2307071,
+        max_node_id: 63,
+        nr_cpus: 2,
+        nr_nodes: 1,
+        outstanding_pages: 0,
+        scrub_pages: 0,
+        threads_per_core: 2,
+        total_pages: 2043916,
+      },
+      xenstore: {
+        local: {
+          domain: Object.fromEntries(
+            activeZones.map((zone) => [
+              String(zone.domid ?? 1),
+              {
+                attr: {},
+                domid: String(zone.domid ?? 1),
+                name: `protect-${zone.uuid}`,
+                protect: {
+                  name: zone.name,
+                  uuid: zone.uuid,
+                  zone: {},
+                },
+                type: "PV",
+                uuid: zone.uuid,
+                "vz-type": "pv",
+              },
+            ]),
+          ),
+        },
+        tool: { xenstored: {} },
+        vm: Object.fromEntries(
+          activeZones.map((zone) => [
+            zone.uuid,
+            { uuid: zone.uuid },
+          ]),
+        ),
+      },
+    };
+  };
+
+  // Xen domain ids are handed out sequentially and never reused, so this is a
+  // monotonic counter rather than `protectZones.length`.
+  let nextProtectDomid = 1;
+
   let protectZones: ProtectZone[] = [];
   let protectWorkloads: ProtectWorkload[] = [];
   let cachedProtectImages = new Set<string>([
@@ -1116,60 +1306,6 @@ vfio_pci`;
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
-
-  // The demo `curl` command may only reach the in-browser simulated cluster.
-  // The underlying cluster resolves loopback and private IPv4 literals
-  // internally, but any other target (a public hostname, a public IP, or a
-  // link-local address such as 169.254.169.254) falls through to a real
-  // network request from the page. Because this terminal is embedded in
-  // public documentation, we refuse those targets so the widget never issues
-  // outbound requests. `curl` is not required by any guided step, so this only
-  // removes real egress, not demo functionality.
-  const isPrivateIpv4 = (host: string): boolean => {
-    const octets = host.split(".");
-
-    if (octets.length !== 4) {
-      return false;
-    }
-
-    const nums = octets.map((octet) => Number(octet));
-
-    if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
-      return false;
-    }
-
-    const [a, b] = nums;
-
-    return (
-      a === 127 ||
-      a === 10 ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
-    );
-  };
-
-  const isSimulatedCurlTarget = (rawTarget: string): boolean => {
-    let parsed: URL;
-
-    try {
-      const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(rawTarget);
-      parsed = new URL(hasScheme ? rawTarget : `http://${rawTarget}`);
-    } catch {
-      return false;
-    }
-
-    const host = parsed.hostname.toLowerCase();
-
-    if (host === "localhost" || host === "::1" || host === "[::1]") {
-      return true;
-    }
-
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-      return isPrivateIpv4(host);
-    }
-
-    return false;
-  };
 
   const tokenize = (command: string): string[] => {
     const tokens: string[] = [];
@@ -1192,8 +1328,41 @@ vfio_pci`;
     output.scrollTop = output.scrollHeight;
   };
 
+  // Frame characters: the vertical and junction box-drawing glyphs that have
+  // to line up with the text columns around them. A lone horizontal rule
+  // under a header does not, so it is deliberately not in this set.
+  const BOX_FRAME_CHARS = /[\u2502\u2503\u2506\u250A\u250C-\u254B\u2550-\u256C]/;
+
+  // A non-space followed by two or more spaces is column padding, i.e. output
+  // that would be ruined by soft wrapping.
+  const COLUMN_PADDING = /\S {2,}\S/;
+
+  const stripTags = (html: string) => html.replace(/<[^>]*>/g, "");
+
+  /*
+    Output falls into three buckets:
+
+      - free-flowing text, which wraps at the right-hand column the way a real
+        terminal does (this is what `--output json` needs: it is one very long
+        line and used to run off the edge of the embed);
+      - column-aligned text, which must not reflow, so it scrolls instead;
+      - box-drawn frames, which additionally need a font that actually ships
+        U+2500 glyphs so the borders line up with the cells.
+  */
+  const preClassName = (htmlContent: string): string => {
+    const text = stripTags(htmlContent);
+
+    if (BOX_FRAME_CHARS.test(text)) {
+      return "terminal-pre terminal-pre-grid terminal-pre-box";
+    }
+    if (COLUMN_PADDING.test(text)) {
+      return "terminal-pre terminal-pre-grid";
+    }
+    return "terminal-pre";
+  };
+
   const printPre = (htmlContent: string) => {
-    printHtml(`<pre class="terminal-pre">${htmlContent}</pre>`);
+    printHtml(`<pre class="${preClassName(htmlContent)}">${htmlContent}</pre>`);
   };
 
   const printCommand = (command: string) => {
@@ -1420,6 +1589,24 @@ vfio_pci`;
     return `fdd4:1476:6c7e::${id}/48`;
   };
 
+  // The daemon reports RFC 3339 timestamps with nanosecond precision and an
+  // explicit `+00:00` offset. `Date` only gives milliseconds, so the remaining
+  // six digits are padded out.
+  const protectTimestamp = (date = new Date()): string => {
+    const nanos = String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+    return date.toISOString().replace(/\.(\d{3})Z$/, `.$1${nanos}+00:00`);
+  };
+
+  // Locally administered unicast MAC, matching the addresses the zone
+  // interfaces actually get assigned.
+  const randomZoneMac = (): string => {
+    const bytes = Array.from({ length: 6 }, () =>
+      Math.floor(Math.random() * 256),
+    );
+    bytes[0] = (bytes[0] & 0xfe) | 0x02;
+    return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(":");
+  };
+
   const launchProtectZone = (
     name: string,
     minCpus = 1,
@@ -1427,6 +1614,9 @@ vfio_pci`;
     targetCpus = 2,
     device?: string,
     kernelVariant?: string,
+    minMemory = 512,
+    maxMemory = 1024,
+    targetMemory = 1024,
   ) => {
     const uuid = crypto.randomUUID();
     const zone: ProtectZone = {
@@ -1440,6 +1630,12 @@ vfio_pci`;
       targetCpus,
       device,
       kernelVariant,
+      domid: nextProtectDomid++,
+      mac: randomZoneMac(),
+      minMemory,
+      maxMemory,
+      targetMemory,
+      createdAt: protectTimestamp(),
     };
     protectZones.push(zone);
     addEvent(
@@ -1451,6 +1647,7 @@ vfio_pci`;
     zone.state = "ready";
     zone.ipv4 = nextZoneIp();
     zone.ipv6 = nextZoneIpv6();
+    zone.readyAt = protectTimestamp();
     addEvent(
       "Normal",
       "ZoneReady",
@@ -1462,6 +1659,299 @@ vfio_pci`;
       `<span style="color:#b8ff3c;">${escapeHtml(uuid)}</span>`,
     );
   };
+  // ---------------------------------------------------------------------
+  // Structured zone output
+  //
+  // The real `protect zone list` serialises one canonical zone record and
+  // then renders it through whichever formatter `--output` selects. The demo
+  // now does the same, so `--output json`, `--output yaml`, `--output tree`
+  // and friends all describe exactly the same object instead of each
+  // reinventing a different shape.
+  // ---------------------------------------------------------------------
+
+  const PROTECT_ZONE_STATE_ENUM: Record<ProtectZone["state"], string> = {
+    creating: "ZONE_STATE_CREATING",
+    ready: "ZONE_STATE_READY",
+    destroying: "ZONE_STATE_DESTROYING",
+    destroyed: "ZONE_STATE_DESTROYED",
+  };
+
+  // Zones created before these fields existed (or restored from an older
+  // session) get filled in once, so repeated listings stay identical.
+  const ensureZoneIdentity = (zone: ProtectZone): Required<
+    Pick<ProtectZone, "domid" | "mac" | "minMemory" | "maxMemory" | "targetMemory" | "createdAt">
+  > => {
+    if (zone.domid === undefined) {
+      zone.domid = nextProtectDomid++;
+    }
+    if (!zone.mac) {
+      zone.mac = randomZoneMac();
+    }
+    if (zone.minMemory === undefined) zone.minMemory = 512;
+    if (zone.maxMemory === undefined) zone.maxMemory = 1024;
+    if (zone.targetMemory === undefined) zone.targetMemory = zone.maxMemory;
+    if (!zone.createdAt) zone.createdAt = protectTimestamp();
+    if (!zone.readyAt && zone.state === "ready") {
+      zone.readyAt = zone.createdAt;
+    }
+
+    return {
+      domid: zone.domid,
+      mac: zone.mac,
+      minMemory: zone.minMemory,
+      maxMemory: zone.maxMemory,
+      targetMemory: zone.targetMemory,
+      createdAt: zone.createdAt,
+    };
+  };
+
+  // Keys are emitted in the same alphabetical order the daemon's protobuf-JSON
+  // serialiser uses, so `--output json` matches the real CLI byte for byte.
+  const buildProtectZoneRecord = (zone: ProtectZone): Record<string, unknown> => {
+    const identity = ensureZoneIdentity(zone);
+    const { domid, mac, minMemory, maxMemory, targetMemory, createdAt } = identity;
+
+    const initialResources = {
+      adjustmentPolicy: "ZONE_RESOURCE_ADJUSTMENT_POLICY_DYNAMIC",
+      maxCpus: zone.maxCpus,
+      maxMemory: String(maxMemory),
+      minCpus: zone.minCpus,
+      minMemory: String(minMemory),
+      targetCpus: zone.targetCpus,
+      targetMemory: String(targetMemory),
+    };
+
+    // After the balloon driver settles, a freshly booted zone sits at its
+    // memory floor rather than its requested target.
+    const activeResources = {
+      ...initialResources,
+      targetMemory: String(minMemory),
+    };
+
+    const ips: Record<string, string>[] = [];
+    if (zone.ipv4) {
+      ips.push({
+        address: zone.ipv4,
+        gateway: "10.75.0.1",
+        version: "ZONE_NETWORK_IP_VERSION_V4",
+      });
+    }
+    if (zone.ipv6) {
+      ips.push({
+        address: zone.ipv6,
+        gateway: "fdd4:1476:6c7e::1",
+        version: "ZONE_NETWORK_IP_VERSION_V6",
+      });
+    }
+
+    const spec: Record<string, unknown> = {
+      initialResources,
+      kernelOptions: zone.kernelVariant ? { variant: zone.kernelVariant } : {},
+      name: zone.name,
+      networkOptions: {},
+      virtualizationOptions: {
+        backend: "ZONE_VIRTUALIZATION_BACKEND_AUTOMATIC",
+        numaStrategy: "NUMA_STRATEGY_COMPACT",
+      },
+    };
+
+    if (zone.device) {
+      spec.devices = [{ name: zone.device }];
+    }
+
+    const status: Record<string, unknown> = {
+      createdAt,
+      deviceStatus: {
+        disks: [
+          {
+            filesystemType: "squashfs",
+            hostBlockDevice: `/dev/loop${10 + (domid - 1) * 2}`,
+            hostImageFile: PROTECT_ADDONS_IMAGE,
+            purpose: "ZONE_DISK_STATUS_DISK_PURPOSE_ADDONS",
+            zoneBlockDevice: "/dev/xvda",
+          },
+        ],
+        mount: {
+          deviceId: "6",
+          hostPath: `/var/lib/edera/protect/state/${zone.uuid}/mounts`,
+          tag: "shared",
+        },
+      },
+      domid,
+      host: PROTECT_HOST_ID,
+      networkStatus: {
+        interfaces: [
+          {
+            hostInterface: `vif${domid}.4`,
+            ips,
+            zoneInterface: "eth0",
+            zoneMac: mac,
+          },
+        ],
+      },
+    };
+
+    if (zone.readyAt) {
+      status.readyAt = zone.readyAt;
+    }
+
+    status.resourceStatus = { activeResources };
+    status.state = PROTECT_ZONE_STATE_ENUM[zone.state];
+
+    return {
+      id: zone.uuid,
+      origin: { userAgent: PROTECT_USER_AGENT },
+      spec,
+      status,
+    };
+  };
+
+  // --- serialisers -------------------------------------------------------
+
+  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+  // Quote anything that a YAML parser would otherwise read back as a number,
+  // boolean or null. This is why memory values come out as '1024'.
+  const formatYamlScalar = (value: unknown): string => {
+    if (value === null || value === undefined) return "null";
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+
+    const text = String(value);
+    const needsQuotes =
+      text === "" ||
+      /^(true|false|null|~|y|n|yes|no|on|off)$/i.test(text) ||
+      /^[-+]?(\d[\d_]*)?(\.\d*)?([eE][-+]?\d+)?$/.test(text) ||
+      /^0[xob]/i.test(text) ||
+      /^[-?:,[\]{}#&*!|>'"%@`]/.test(text) ||
+      /: /.test(text) ||
+      / #/.test(text) ||
+      /^\s|\s$/.test(text);
+
+    return needsQuotes ? `'${text.replace(/'/g, "''")}'` : text;
+  };
+
+  // Block-style YAML. Sequences nested under a mapping key are *not* indented
+  // relative to that key, which is what libyaml (and therefore the real CLI)
+  // emits.
+  const toYaml = (value: unknown, indent = 0): string => {
+    const pad = " ".repeat(indent);
+
+    if (Array.isArray(value)) {
+      if (!value.length) return `${pad}[]`;
+
+      return value
+        .map((item) => {
+          if (isPlainObject(item) || Array.isArray(item)) {
+            const body = toYaml(item, indent + 2);
+            return `${pad}- ${body.slice(indent + 2)}`;
+          }
+          return `${pad}- ${formatYamlScalar(item)}`;
+        })
+        .join("\n");
+    }
+
+    if (isPlainObject(value)) {
+      const entries = Object.entries(value);
+      if (!entries.length) return `${pad}{}`;
+
+      return entries
+        .map(([key, val]) => {
+          if (Array.isArray(val)) {
+            return val.length
+              ? `${pad}${key}:\n${toYaml(val, indent)}`
+              : `${pad}${key}: []`;
+          }
+          if (isPlainObject(val)) {
+            return Object.keys(val).length
+              ? `${pad}${key}:\n${toYaml(val, indent + 2)}`
+              : `${pad}${key}: {}`;
+          }
+          return `${pad}${key}: ${formatYamlScalar(val)}`;
+        })
+        .join("\n");
+    }
+
+    return `${pad}${formatYamlScalar(value)}`;
+  };
+
+  // Flatten to dotted paths for `--output key-value`.
+  const toKeyValueLines = (value: unknown, prefix = ""): string[] => {
+    if (Array.isArray(value)) {
+      if (!value.length) return [`${prefix}=[]`];
+      return value.flatMap((item, index) =>
+        toKeyValueLines(item, prefix ? `${prefix}.${index}` : String(index)),
+      );
+    }
+
+    if (isPlainObject(value)) {
+      const entries = Object.entries(value);
+      if (!entries.length) return [`${prefix}={}`];
+      return entries.flatMap(([key, val]) =>
+        toKeyValueLines(val, prefix ? `${prefix}.${key}` : key),
+      );
+    }
+
+    return [`${prefix}=${value === null || value === undefined ? "" : String(value)}`];
+  };
+
+  // Box-drawing tree for `--output tree`.
+  const toTreeLines = (value: unknown, prefix = ""): string[] => {
+    const entries: [string, unknown][] = Array.isArray(value)
+      ? value.map((item, index) => [String(index), item] as [string, unknown])
+      : Object.entries(value as Record<string, unknown>);
+
+    return entries.flatMap(([key, val], index) => {
+      const last = index === entries.length - 1;
+      const branch = last ? "└── " : "├── ";
+      const childPrefix = prefix + (last ? "    " : "│   ");
+
+      if (Array.isArray(val) || isPlainObject(val)) {
+        const empty = Array.isArray(val)
+          ? val.length === 0
+          : Object.keys(val).length === 0;
+        if (empty) {
+          return [`${prefix}${branch}${key}: ${Array.isArray(val) ? "[]" : "{}"}`];
+        }
+        return [`${prefix}${branch}${key}`, ...toTreeLines(val, childPrefix)];
+      }
+
+      return [`${prefix}${branch}${key}: ${val === null || val === undefined ? "" : String(val)}`];
+    });
+  };
+
+  // --- renderers ---------------------------------------------------------
+
+  const ZONE_TABLE_COLUMNS: {
+    header: string;
+    value: (zone: ProtectZone) => string;
+    colour?: (zone: ProtectZone) => string;
+  }[] = [
+    { header: "name", value: (zone) => zone.name },
+    { header: "uuid", value: (zone) => zone.uuid },
+    {
+      header: "state",
+      value: (zone) => zone.state,
+      colour: (zone) =>
+        zone.state === "ready"
+          ? "#b8ff3c"
+          : zone.state === "destroyed"
+            ? "#a8cfca"
+            : "#ffd166",
+    },
+    { header: "ipv4", value: (zone) => zone.ipv4 || "" },
+    { header: "ipv6", value: (zone) => zone.ipv6 || "" },
+  ];
+
+  const ZONE_TABLE_HINT = [
+    "# To view detailed zone information, use `--output` followed by a format specifier.",
+    "# e.g. `protect zone list --output yaml`",
+  ].join("\n");
+
+  // comfy-table's UTF8_FULL_CONDENSED preset: a solid outer frame, `┆` between
+  // columns, `╞═╡` under the header, and no separators between data rows.
   const renderProtectZoneList = (zones = protectZones) => {
     if (zones.length === 0) {
       printHtml(
@@ -1469,46 +1959,174 @@ vfio_pci`;
       );
       return;
     }
-    const nameWidth = 15;
-    const uuidWidth = 38;
-    const stateWidth = 13;
-    const ipv4Width = 18;
-    const header =
-      "NAME".padEnd(nameWidth) +
-      "UUID".padEnd(uuidWidth) +
-      "STATE".padEnd(stateWidth) +
-      "IPV4".padEnd(ipv4Width) +
-      "IPV6";
-    const divider =
-      "─".repeat(nameWidth) +
-      "─".repeat(uuidWidth) +
-      "─".repeat(stateWidth) +
-      "─".repeat(ipv4Width) +
-      "─".repeat(28);
 
-    let html = `<span style="color:#00e5d4;font-weight:700;">${header}</span>\n`;
-    html += `<span style="color:#08736d;">${divider}</span>\n`;
+    const widths = ZONE_TABLE_COLUMNS.map((column) =>
+      Math.max(
+        column.header.length,
+        ...zones.map((zone) => column.value(zone).length),
+      ) + 2,
+    );
+
+    const border = (left: string, mid: string, right: string, fill: string) =>
+      `<span style="color:#08736d;">${left}${widths
+        .map((width) => fill.repeat(width))
+        .join(mid)}${right}</span>`;
+
+    const cell = (text: string, width: number, colour?: string) => {
+      const padded = ` ${text.padEnd(width - 2)} `;
+      return colour
+        ? `<span style="color:${colour};">${escapeHtml(padded)}</span>`
+        : escapeHtml(padded);
+    };
+
+    const pipe = `<span style="color:#08736d;">│</span>`;
+    const inner = `<span style="color:#08736d;">┆</span>`;
+
+    const lines: string[] = [border("┌", "┬", "┐", "─")];
+
+    lines.push(
+      pipe +
+        ZONE_TABLE_COLUMNS.map((column, index) =>
+          `<span style="color:#00e5d4;font-weight:700;">${escapeHtml(
+            ` ${column.header.padEnd(widths[index] - 2)} `,
+          )}</span>`,
+        ).join(inner) +
+        pipe,
+    );
+
+    lines.push(border("╞", "╪", "╡", "═"));
 
     for (const zone of zones) {
-      const stateColor =
-        zone.state === "ready"
-          ? "#b8ff3c"
-          : zone.state === "destroyed"
-            ? "#a8cfca"
-            : "#ffd166";
-
-      html +=
-        `${escapeHtml(zone.name.padEnd(nameWidth))}` +
-        `${escapeHtml(zone.uuid.padEnd(uuidWidth))}` +
-        `<span style="color:${stateColor};">${escapeHtml(
-          zone.state.padEnd(stateWidth),
-        )}</span>` +
-        `${escapeHtml((zone.ipv4 || "").padEnd(ipv4Width))}` +
-        `${escapeHtml(zone.ipv6 || "")}` +
-        "\n";
+      lines.push(
+        pipe +
+          ZONE_TABLE_COLUMNS.map((column, index) =>
+            cell(column.value(zone), widths[index], column.colour?.(zone)),
+          ).join(inner) +
+          pipe,
+      );
     }
 
-    printPre(html.trimEnd());
+    lines.push(border("└", "┴", "┘", "─"));
+    lines.push("");
+    lines.push(
+      `<span style="color:#5f8d87;">${escapeHtml(ZONE_TABLE_HINT)}</span>`,
+    );
+
+    printPre(lines.join("\n"));
+  };
+
+  // Plain whitespace-delimited columns, no frame.
+  const renderProtectZoneSimple = (zones: ProtectZone[]) => {
+    if (!zones.length) {
+      printPre("");
+      return;
+    }
+
+    const widths = ZONE_TABLE_COLUMNS.map((column) =>
+      Math.max(
+        column.header.length,
+        ...zones.map((zone) => column.value(zone).length),
+      ),
+    );
+
+    const row = (cells: string[]) =>
+      cells
+        .map((text, index) =>
+          index === cells.length - 1 ? text : text.padEnd(widths[index] + 2),
+        )
+        .join("")
+        .trimEnd();
+
+    const lines = [
+      `<span style="color:#00e5d4;font-weight:700;">${escapeHtml(
+        row(ZONE_TABLE_COLUMNS.map((column) => column.header)),
+      )}</span>`,
+      ...zones.map((zone) =>
+        escapeHtml(row(ZONE_TABLE_COLUMNS.map((column) => column.value(zone)))),
+      ),
+    ];
+
+    printPre(lines.join("\n"));
+  };
+
+  const PROTECT_OUTPUT_FORMATS = [
+    "table",
+    "tree",
+    "json",
+    "json-pretty",
+    "jsonl",
+    "yaml",
+    "key-value",
+    "simple",
+  ];
+
+  const printProtectOutputFormatError = (format: string) => {
+    printPre(
+      `<span style="color:#ff7373;">${escapeHtml(
+        `error: invalid value '${format}' for '--output <OUTPUT>'\n  [possible values: ${PROTECT_OUTPUT_FORMATS.join(
+          ", ",
+        )}]`,
+      )}</span>\n${escapeHtml("\nFor more information, try '--help'.")}`,
+    );
+  };
+
+  const renderProtectZoneOutput = (zones: ProtectZone[], format: string) => {
+    const normalized = (format || "table").toLowerCase();
+    const records = zones.map(buildProtectZoneRecord);
+
+    switch (normalized) {
+      case "table":
+        renderProtectZoneList(zones);
+        return;
+
+      case "json":
+        printPre(escapeHtml(JSON.stringify(records)));
+        return;
+
+      case "json-pretty":
+        printPre(escapeHtml(JSON.stringify(records, null, 2)));
+        return;
+
+      case "jsonl":
+        printPre(
+          records.map((record) => escapeHtml(JSON.stringify(record))).join("\n"),
+        );
+        return;
+
+      case "yaml":
+        printPre(escapeHtml(records.length ? toYaml(records) : "[]"));
+        return;
+
+      case "key-value":
+        printPre(
+          records
+            .map((record) => escapeHtml(toKeyValueLines(record).join("\n")))
+            .join("\n\n"),
+        );
+        return;
+
+      case "tree":
+        printPre(
+          records
+            .map((record, index) =>
+              [
+                `<span style="color:#00e5d4;font-weight:700;">${escapeHtml(
+                  zones[index].name,
+                )}</span>`,
+                escapeHtml(toTreeLines(record).join("\n")),
+              ].join("\n"),
+            )
+            .join("\n\n"),
+        );
+        return;
+
+      case "simple":
+        renderProtectZoneSimple(zones);
+        return;
+
+      default:
+        printProtectOutputFormatError(format);
+    }
   };
 
   const destroyProtectZoneInstance = (zone: ProtectZone, wait = false) => {
@@ -2357,8 +2975,8 @@ vfio_pci`;
           </div>
 
           <div class="cli-help-command">
-            <code>protect zone list [ZONE] [--output json-pretty]</code>
-            <span>List Edera zones, or inspect one zone with JSON output.</span>
+            <code>protect zone list [ZONE] [--output &lt;FORMAT&gt;]</code>
+            <span>List Edera zones. Formats: table, tree, json, json-pretty, jsonl, yaml, key-value, simple.</span>
           </div>
 
           <div class="cli-help-command">
@@ -2404,11 +3022,6 @@ vfio_pci`;
 
         <div class="cli-help-section">
           <div class="cli-help-section-title">Utilities</div>
-
-          <div class="cli-help-command">
-            <code>curl &lt;url&gt;</code>
-            <span>Send a simulated HTTP GET request through the cluster.</span>
-          </div>
 
           <div class="cli-help-command">
             <code>ls -laR [directory]</code>
@@ -2555,7 +3168,684 @@ vfio_pci`;
     `;
   };
 
-  const formatProtectHelpText = () => {
+  const formatProtectCliHelp = (path: string[] = []) => {
+    const help: Record<string, string> = {
+      "": `Control the Edera Protect daemon
+
+Usage: protect [OPTIONS] <COMMAND>
+
+Commands:
+  zone                  Manage the zones on Edera Protect
+  workload              Manage the workloads on Edera Protect
+  image                 Manage the images on Edera Protect
+  network               Manage the network on Edera Protect
+  device                Manage the devices on Edera Protect
+  host                  Manage the host of Edera Protect
+  object-capability     Inspect and use object capabilities [alias: ocap]
+  completion            Output shell completion code for the specified shell
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -c, --connection <CONNECTION>
+      The connection URL to the Edera Protect daemon [default: unix:///var/lib/edera/protect/daemon.socket]
+
+      --user-agent <USER_AGENT>
+      User agent to connect to the daemon as [default: edera-protect-ctl/0.0.0+sha.c92a5e2]
+
+  -h, --help
+      Print help
+
+  -V, --version
+      Print version
+
+This CLI is under active development. Options and Commands are subject to change.`,
+
+      "zone": `Manage the zones on Edera Protect
+
+Usage: protect zone <COMMAND>
+
+Commands:
+  attach                Attach to the zone console
+  list                  List zone information
+  vcpu-list             Display information about a zone's vCPUs and their pinning
+  vcpu-pin              Set CPUs affinities for a zone vCPU
+  resolve               Resolve a zone name to matching zone ids
+  launch                Launch a new zone
+  destroy               Destroy a zone
+  suspend               Suspend a running zone
+  resume                Resume a suspended zone
+  fork                  Fork a running zone into a new memory-shared child zone
+  exec                  Execute a command inside the zone
+  forget                Forget destroyed zones (clear their tombstones)
+  logs                  View the logs of a zone
+  metrics               Read metrics from the zone
+  top                   Dashboard for running zones
+  watch                 Watch for zone changes
+  update-resources      Update the available resources to a zone
+  configure-network     Configure the network of an external network backend zone
+  advertise-service     Advertise a service in a zone
+  unadvertise-service   Unadvertise a service in a zone
+  kernel-events         Manage kernel events from zones
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "zone list": `List zone information
+
+Usage: protect zone list [OPTIONS] [ZONE]
+
+Arguments:
+  <ZONE>  Zone to list, either the name or the uuid
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "zone vcpu-list": `Display information about a zone's vCPUs and their pinning
+
+Usage: protect zone vcpu-list [OPTIONS] [ZONE]
+
+Arguments:
+  <ZONE>  Zone to list vCPUs for, either the name or the uuid
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "zone vcpu-pin": `Set CPUs affinities for a zone vCPU
+
+Usage: protect zone vcpu-pin <ZONE> <VCPU> <HARD_AFFINITY> [SOFT_AFFINITY]
+
+Arguments:
+  <ZONE>             Zone to set CPUs affinities for, either the name or the uuid
+  <VCPU>             The vCPU for which CPU affinities are set (values: "vCPU|all")
+  <HARD_AFFINITY>    Hard affinity (values: "Hard affinity|-|all")
+  <SOFT_AFFINITY>   Soft affinity (values: "Soft affinity|-|all")
+
+Options:
+  -h, --help         Print help`,
+
+      "zone resolve": `Resolve a zone name to matching zone ids
+
+Usage: protect zone resolve [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  The zone name to resolve
+
+Options:
+  -f, --first  If there are multiple matching zones, only print the first zone id
+  -h, --help   Print help`,
+
+      "zone launch": `Launch a new zone
+
+Usage: protect zone launch [OPTIONS] --name <NAME>
+
+Options:
+  -n, --name <NAME>              Name of the zone
+      --min-cpus <MIN_CPUS>      Minimum vCPUs available for the zone
+  -C, --max-cpus <MAX_CPUS>      Maximum vCPUs available for the zone
+  -c, --target-cpus <TARGET_CPUS>
+                                 Target vCPUs for the zone to use
+      --device <DEVICE>          Named PCI device to attach
+      --kernel-variant <KERNEL_VARIANT>
+                                 Named kernel variant to use
+  -h, --help                     Print help`,
+
+      "zone destroy": `Destroy a zone
+
+Usage: protect zone destroy [OPTIONS] <ZONE>
+
+Arguments:
+  <ZONE>  Zone to destroy, either the name or the uuid
+
+Options:
+  -W, --wait                  Wait for destruction to complete
+  -A, --all                   Destroy all matching zones
+  -l, --selector <SELECTOR>   Filter matches using a selector
+  -h, --help                  Print help`,
+
+      "zone suspend": `Suspend a running zone
+
+Usage: protect zone suspend <ZONE>
+
+Arguments:
+  <ZONE>  Zone to suspend, either the name or the uuid
+
+Options:
+  -h, --help  Print help`,
+
+      "zone resume": `Resume a suspended zone
+
+Usage: protect zone resume <ZONE>
+
+Arguments:
+  <ZONE>  Zone to resume, either the name or the uuid
+
+Options:
+  -h, --help  Print help`,
+
+      "zone fork": `Fork a running zone into a new memory-shared child zone
+
+Usage: protect zone fork [OPTIONS] <ZONE>
+
+Arguments:
+  <ZONE>  Zone to fork
+
+Options:
+  -n, --name <NAME>  Name of the child zone
+  -h, --help         Print help`,
+
+      "zone exec": `Execute a command inside the zone
+
+Usage: protect zone exec [OPTIONS] <ZONE> [COMMAND]...
+
+Arguments:
+  <ZONE>     Zone to exec inside, either the name or the uuid
+  <COMMAND>  Command to run inside the zone
+
+Options:
+  -t, --tty  Allocate a tty
+  -h, --help  Print help`,
+
+      "zone forget": `Forget destroyed zones (clear their tombstones)
+
+Usage: protect zone forget <ZONE>
+
+Arguments:
+  <ZONE>  Zone to forget
+
+Options:
+  -h, --help  Print help`,
+
+      "zone logs": `View the logs of a zone
+
+Usage: protect zone logs [OPTIONS] <ZONE>
+
+Arguments:
+  <ZONE>  Zone whose logs should be displayed
+
+Options:
+  -f, --follow  Follow the zone log
+  -h, --help    Print help`,
+
+      "zone metrics": `Read metrics from the zone
+
+Usage: protect zone metrics [OPTIONS] <ZONE>
+
+Arguments:
+  <ZONE>  Zone whose metrics should be displayed
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "zone top": `Dashboard for running zones
+
+Usage: protect zone top
+
+Options:
+  -h, --help  Print help`,
+
+      "zone watch": `Watch for zone changes
+
+Usage: protect zone watch
+
+Options:
+  -h, --help  Print help`,
+
+      "zone update-resources": `Update the available resources to a zone
+
+Usage: protect zone update-resources [OPTIONS] <ZONE>
+
+Arguments:
+  <ZONE>  Zone to update
+
+Options:
+  -h, --help  Print help`,
+
+      "zone configure-network": `Configure the network of an external network backend zone
+
+Usage: protect zone configure-network [OPTIONS] <ZONE>
+
+Arguments:
+  <ZONE>  Zone to configure
+
+Options:
+  -h, --help  Print help`,
+
+      "zone advertise-service": `Advertise a service in a zone
+
+Usage: protect zone advertise-service [OPTIONS] <ZONE> <NAME>
+
+Arguments:
+  <ZONE>  Zone to advertise from
+  <NAME>  Service name
+
+Options:
+  -h, --help  Print help`,
+
+      "zone unadvertise-service": `Unadvertise a service in a zone
+
+Usage: protect zone unadvertise-service <ZONE> <NAME>
+
+Arguments:
+  <ZONE>  Zone to unadvertise from
+  <NAME>  Service name
+
+Options:
+  -h, --help  Print help`,
+
+      "zone kernel-events": `Manage kernel events from zones
+
+Usage: protect zone kernel-events <COMMAND>
+
+Commands:
+  stream                Stream kernel events
+  list-syscalls         List available syscalls
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "workload": `Manage the workloads on Edera Protect
+
+Usage: protect workload <COMMAND>
+
+Commands:
+  launch                Launch a new workload
+  exec                  Execute a command inside the workload
+  attach                Attach to a workload console
+  resolve               Resolve a workload name to matching workload ids
+  start                 Start a workload
+  stop                  Stop a workload
+  destroy               Destroy a workload
+  list                  List workload information
+  watch                 Watch for workload changes
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "workload launch": `Launch a new workload
+
+Usage: protect workload launch [OPTIONS] --zone <ZONE> <OCI> [COMMAND]...
+
+Arguments:
+  <OCI>       Container image for zone to use
+  [COMMAND]... Command to run the workload
+
+Options:
+  --image-format <IMAGE_FORMAT>          Image format [default: squashfs] [possible values: squashfs]
+  --pull-overwrite-cache                 Overwrite image cache on pull
+  --pull-update                          Update image on pull
+  -n, --name <NAME>                      Name of the workload
+  -W, --wait                             Wait for the workload to be started
+  -t, --tty                              Allocate tty for the workload
+  --enable-spire-access                  Mount the SPIRE agent's Workload API socket into the workload
+  --enable-identity                      Have the zone agent fetch this workload's SVID
+  --ocap-priority <OCAP_PRIORITY>        Preference weight for a published capability
+  -z, --zone <ZONE>                      Zone to launch the workload in
+  -h, --help                             Print help`,
+
+      "workload exec": `Execute a command inside the workload
+
+Usage: protect workload exec [OPTIONS] <WORKLOAD> [COMMAND]...
+
+Arguments:
+  <WORKLOAD>  Workload to exec inside, either the name or the uuid
+  [COMMAND]   Command to run inside the zone
+
+Options:
+  -t, --tty  Allocate tty for the workload
+  -h, --help  Print help`,
+
+      "workload attach": `Attach to a workload console
+
+Usage: protect workload attach <WORKLOAD>
+
+Arguments:
+  <WORKLOAD>  Workload to attach to
+
+Options:
+  -h, --help  Print help`,
+
+      "workload resolve": `Resolve a workload name to matching workload ids
+
+Usage: protect workload resolve [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  The workload name to resolve
+
+Options:
+  -f, --first  If there are multiple matching workloads, only print the first workload id
+  -h, --help   Print help`,
+
+      "workload start": `Start a workload
+
+Usage: protect workload start <WORKLOAD>
+
+Arguments:
+  <WORKLOAD>  Workload to start
+
+Options:
+  -h, --help  Print help`,
+
+      "workload stop": `Stop a workload
+
+Usage: protect workload stop <WORKLOAD>
+
+Options:
+  -h, --help  Print help`,
+
+      "workload destroy": `Destroy a workload
+
+Usage: protect workload destroy [OPTIONS] <WORKLOAD>
+
+Options:
+  -W, --wait  Wait for the workload to be destroyed
+  -h, --help   Print help`,
+
+      "workload list": `List workload information
+
+Usage: protect workload list [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "workload watch": `Watch for workload changes
+
+Usage: protect workload watch
+
+Options:
+  -h, --help  Print help`,
+
+      "image": `Manage the images on Edera Protect
+
+Usage: protect image <COMMAND>
+
+Commands:
+  pull                  Pull an image into the cache
+  import                Import an image into the cache
+  remove                Remove an image from the cache
+  list                  List cached images
+  list-kernel-variants  List the named kernel variants the daemon can resolve
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "image pull": `Pull an image into the cache
+
+Usage: protect image pull [OPTIONS] <IMAGE>
+
+Arguments:
+  <IMAGE>  Image name
+
+Options:
+  -s, --image-format <IMAGE_FORMAT>  Image format [default: squashfs] [possible values: squashfs, tar, directory]
+  -n, --no-update                    Don't update from registry
+  -o, --overwrite-cache              Overwrite image cache
+  -U, --username <USERNAME>          Auth username
+  -P, --password <PASSWORD>          Auth registry password
+  -T, --registry-token <REGISTRY_TOKEN>
+                                      Auth registry token
+  --identity-token <IDENTITY_TOKEN>  Auth identity token
+  -h, --help                         Print help`,
+
+      "image import": `Import an image into the cache
+
+Usage: protect image import [OPTIONS] --digest <DIGEST> --image <IMAGE>
+
+Options:
+  --digest <DIGEST>  Image digest
+  --image <IMAGE>    Image reference
+  -h, --help         Print help`,
+
+      "image remove": `Remove an image from the cache
+
+Usage: protect image remove <IMAGE>
+
+Arguments:
+  <IMAGE>  Image reference or digest
+
+Options:
+  -h, --help  Print help`,
+
+      "image list": `List cached images
+
+Usage: protect image list [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "image list-kernel-variants": `List the named kernel variants the daemon can resolve
+
+Usage: protect image list-kernel-variants
+
+Options:
+  -h, --help  Print help`,
+
+      "network": `Manage the network on Edera Protect
+
+Usage: protect network <COMMAND>
+
+Commands:
+  reservation           Manage network reservations
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "network reservation": `Manage network reservations
+
+Usage: protect network reservation <COMMAND>
+
+Commands:
+  create                Create network reservation
+  destroy               Destroy network reservation
+  list                  List network reservation information
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "network reservation create": `Create network reservation
+
+Usage: protect network reservation create
+
+Options:
+  -h, --help  Print help`,
+
+      "network reservation destroy": `Destroy network reservation
+
+Usage: protect network reservation destroy <RESERVATION>
+
+Arguments:
+  <RESERVATION>  Reservation to destroy
+
+Options:
+  -h, --help     Print help`,
+
+      "network reservation list": `List network reservation information
+
+Usage: protect network reservation list [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "device": `Manage the devices on Edera Protect
+
+Usage: protect device <COMMAND>
+
+Commands:
+  list                  List device information
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "device list": `List device information
+
+Usage: protect device list [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "host": `Manage the host of Edera Protect
+
+Usage: protect host <COMMAND>
+
+Commands:
+  cpu-topology          Display information about the host CPU topology
+  resources             Get aggregate memory, CPU, and topology resources of the host
+  status                Get information about the host
+  control-snoop         Snoop on the Control API
+  idm-snoop             Snoop on the IDM bus
+  hv-console            Display hypervisor console output
+  hv-debug-info         Read hypervisor debug information
+  hv-zone-details       Display per-domain memory and resource usage from the hypervisor
+  spire-start           Launch a SPIRE server zone (the daemon runs the server using its [spire] config)
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "host cpu-topology": `Display information about the host CPU topology
+
+Usage: protect host cpu-topology [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value]
+  -h, --help             Print help`,
+
+      "host resources": `Get aggregate memory, CPU, and topology resources of the host
+
+Usage: protect host resources [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: simple]
+                         [possible values: simple, table, tree, json, json-pretty, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "host status": `Get information about the host
+
+Usage: protect host status [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: simple]
+                         [possible values: simple, table, tree, json, json-pretty, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "host control-snoop": `Snoop on the Control API
+
+Usage: protect host control-snoop [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: simple]
+                         [possible values: simple, table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  --filter-internals     Filters out user agents matching edera-protect-*, excluding the CLI
+  -h, --help             Print help`,
+
+      "host idm-snoop": `Snoop on the IDM bus
+
+Usage: protect host idm-snoop [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: simple]
+                         [possible values: simple, table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "host hv-console": `Display hypervisor console output
+
+Usage: protect host hv-console
+
+Options:
+  -h, --help  Print help`,
+
+      "host hv-debug-info": `Read hypervisor debug information
+
+Usage: protect host hv-debug-info
+
+Options:
+  -h, --help  Print help`,
+
+      "host hv-zone-details": `Display per-domain memory and resource usage from the hypervisor
+
+Usage: protect host hv-zone-details [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "host spire-start": `Launch a SPIRE server zone (the daemon runs the server using its [spire] config)
+
+Usage: protect host spire-start [OPTIONS]
+
+Options:
+  --pull-overwrite-cache
+  --pull-update
+  -n, --name <NAME>
+  --min-cpus <MIN_CPUS>       Minimum vCPUs available for the zone [default: 4]
+  -C, --max-cpus <MAX_CPUS>   Maximum vCPUs available for the zone [default: 4]
+  -c, --target-cpus <TARGET_CPUS>
+                              Target vCPUs for the zone to use [default: 1]
+  --cpus-hard-affinity <CPUS_HARD_AFFINITY>
+  --cpus-soft-affinity <CPUS_SOFT_AFFINITY>
+  -h, --help                  Print help`,
+
+      "object-capability": `Inspect and use object capabilities
+
+Usage: protect object-capability <COMMAND>
+
+Commands:
+  list                  List published object capabilities
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help            Print help`,
+
+      "object-capability list": `List published object capabilities
+
+Usage: protect object-capability list [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  Output format [default: table]
+                         [possible values: table, tree, json, json-pretty, jsonl, yaml, key-value, simple]
+  -h, --help             Print help`,
+
+      "completion": `Output shell completion code for the specified shell
+
+Usage: protect completion <SHELL>
+
+Arguments:
+  <SHELL>  [possible values: bash, elvish, fish, powershell, zsh]
+
+Options:
+  -h, --help  Print help`,
+    };
+
+    const key = path.join(" ");
+    return help[key] ?? help[""];
+  };
+
+  // The original rich, interactive help is intentionally preserved. It is
+  // available as `protect demo-help`, while the normal help flags mirror the
+  // real Edera Protect CLI hierarchy.
+  const formatProtectDemoHelpText = () => {
     return `
       <div class="cli-help">
         <div class="cli-help-header">
@@ -2571,135 +3861,42 @@ vfio_pci`;
 
         <div class="cli-help-section">
           <div class="cli-help-section-title">Zones</div>
-
-          <div class="cli-help-command">
-            <code>protect zone launch -n &lt;name&gt; [options]</code>
-            <span>Create a new isolated Edera zone.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect zone list [ZONE] [--output json-pretty]</code>
-            <span>List Edera zones, or inspect one zone with JSON output.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect zone watch</code>
-            <span>Watch simulated zone state changes in real time.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect zone destroy [OPTIONS] &lt;ZONE&gt;</code>
-            <span>Destroy a zone by name or UUID.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>-W, --wait</code>
-            <span>Wait for the destruction of the zone to complete.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>-A, --all</code>
-            <span>Destroy all zones matching the input.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>-l, --selector &lt;SELECTOR&gt;</code>
-            <span>Filter matches using the <code style="color:#b8ff3c;">status.state</code> field.</span>
-          </div>
+          <div class="cli-help-command"><code>protect zone launch -n &lt;name&gt; [options]</code><span>Create a new isolated Edera zone.</span></div>
+          <div class="cli-help-command"><code>protect zone list [ZONE] [--output json-pretty]</code><span>List Edera zones, or inspect one zone with JSON output.</span></div>
+          <div class="cli-help-command"><code>protect zone watch</code><span>Watch simulated zone state changes in real time.</span></div>
+          <div class="cli-help-command"><code>protect zone destroy [OPTIONS] &lt;ZONE&gt;</code><span>Destroy a zone by name or UUID.</span></div>
+          <div class="cli-help-command"><code>-W, --wait</code><span>Wait for the destruction of the zone to complete.</span></div>
+          <div class="cli-help-command"><code>-A, --all</code><span>Destroy all zones matching the input.</span></div>
+          <div class="cli-help-command"><code>-l, --selector &lt;SELECTOR&gt;</code><span>Filter matches using the <code style="color:#b8ff3c;">status.state</code> field.</span></div>
         </div>
 
         <div class="cli-help-section">
           <div class="cli-help-section-title">Workloads</div>
-
-          <div class="cli-help-command">
-            <code>protect workload launch --zone &lt;zone&gt; --name &lt;name&gt; &lt;image&gt; [command]</code>
-            <span>Start a workload inside an existing ready zone.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect workload list [--selector status.state=running]</code>
-            <span>List workloads and optionally filter them by state.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect workload stop &lt;workload&gt;</code>
-            <span>Stop a running workload.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect workload start &lt;workload&gt;</code>
-            <span>Start a stopped workload.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect workload exec &lt;workload&gt; &lt;command&gt;</code>
-            <span>Execute a command inside a running workload.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect workload destroy &lt;workload&gt; --wait</code>
-            <span>Remove a workload from its Edera zone.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect zone logs &lt;zone&gt;</code>
-            <span>Show simulated zone boot and NVIDIA driver logs.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect image list [--output json-pretty]</code>
-            <span>List cached container images.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect image pull [--overwrite-cache] &lt;image&gt;</code>
-            <span>Pull an image into the local cache.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect image remove &lt;digest&gt;</code>
-            <span>Remove a cached image by digest.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect image list-kernel-variants</code>
-            <span>List configured zone kernel variants and their resolved images.</span>
-          </div>
+          <div class="cli-help-command"><code>protect workload launch --zone &lt;zone&gt; --name &lt;name&gt; &lt;image&gt; [command]</code><span>Start a workload inside an existing ready zone.</span></div>
+          <div class="cli-help-command"><code>protect workload list [--selector status.state=running]</code><span>List workloads and optionally filter them by state.</span></div>
+          <div class="cli-help-command"><code>protect workload stop &lt;workload&gt;</code><span>Stop a running workload.</span></div>
+          <div class="cli-help-command"><code>protect workload start &lt;workload&gt;</code><span>Start a stopped workload.</span></div>
+          <div class="cli-help-command"><code>protect workload exec &lt;workload&gt; &lt;command&gt;</code><span>Execute a command inside a running workload.</span></div>
+          <div class="cli-help-command"><code>protect workload destroy &lt;workload&gt; --wait</code><span>Remove a workload from its Edera zone.</span></div>
+          <div class="cli-help-command"><code>protect zone logs &lt;zone&gt;</code><span>Show simulated zone boot and NVIDIA driver logs.</span></div>
+          <div class="cli-help-command"><code>protect image list [--output json-pretty]</code><span>List cached container images.</span></div>
+          <div class="cli-help-command"><code>protect image pull [--overwrite-cache] &lt;image&gt;</code><span>Pull an image into the local cache.</span></div>
+          <div class="cli-help-command"><code>protect image remove &lt;digest&gt;</code><span>Remove a cached image by digest.</span></div>
+          <div class="cli-help-command"><code>protect image list-kernel-variants</code><span>List configured zone kernel variants and their resolved images.</span></div>
         </div>
 
         <div class="cli-help-section">
           <div class="cli-help-section-title">GPU passthrough</div>
-
-          <div class="cli-help-command">
-            <code>--device gpu0</code>
-            <span>Attach the GPU named gpu0 in daemon.toml to a zone.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>--kernel-variant nvidia</code>
-            <span>Launch the NVIDIA-enabled zone kernel variant.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect workload exec &lt;workload&gt; nvidia-smi</code>
-            <span>Verify Tesla T4 access from inside a GPU workload.</span>
-          </div>
+          <div class="cli-help-command"><code>--device gpu0</code><span>Attach the GPU named gpu0 in daemon.toml to a zone.</span></div>
+          <div class="cli-help-command"><code>--kernel-variant nvidia</code><span>Launch the NVIDIA-enabled zone kernel variant.</span></div>
+          <div class="cli-help-command"><code>protect workload exec &lt;workload&gt; nvidia-smi</code><span>Verify Tesla T4 access from inside a GPU workload.</span></div>
         </div>
 
         <div class="cli-help-section">
           <div class="cli-help-section-title">Help</div>
-
-          <div class="cli-help-command">
-            <code>protect --help</code>
-            <span>Show this command reference.</span>
-          </div>
-
-          <div class="cli-help-command">
-            <code>protect -h</code>
-            <span>Alias for <code style="color:#b8ff3c;">protect --help</code>.</span>
-          </div>
+          <div class="cli-help-command"><code>protect --help</code><span>Show the real Edera Protect CLI help.</span></div>
+          <div class="cli-help-command"><code>protect demo-help</code><span>Show this richer Webernetes demonstration reference.</span></div>
         </div>
-
       </div>
     `;
   };
@@ -2709,21 +3906,6 @@ vfio_pci`;
     if (outputIndex >= 0) return tokens[outputIndex + 1] || "table";
     const equalsToken = tokens.find((token) => token.startsWith("-o=") || token.startsWith("--output="));
     return equalsToken ? equalsToken.split("=").slice(1).join("=") : "table";
-  };
-
-  const renderProtectZoneJson = (zones: ProtectZone[], pretty = false) => {
-    const payload = {
-      zones: zones.map((zone) => ({
-        name: zone.name,
-        id: zone.uuid,
-        state: zone.state,
-        resources: { cpus: zone.targetCpus, memory: `${zone.maxCpus * 512}MB` },
-        ipv4: zone.ipv4,
-        ipv6: zone.ipv6,
-        ...(zone.kernelVariant ? { kernelVariant: zone.kernelVariant } : {}),
-      })),
-    };
-    printPre(escapeHtml(JSON.stringify(payload, null, pretty ? 2 : 0)));
   };
 
   const renderProtectWorkloadJson = (workloads: ProtectWorkload[], pretty = false) => {
@@ -2815,14 +3997,35 @@ vfio_pci`;
     if (tokens[0] !== "protect") {
       return false;
     }
-    if (
-      tokens.length === 1 ||
-      tokens[1] === "--help" ||
-      tokens[1] === "-h"
-    ) {
-      printHtml(formatProtectHelpText());
-
+    // Mirror the real Edera CLI's help routing. `protect`, `protect -h`,
+    // and `protect --help` all show the authentic top-level help. A help
+    // flag after a command shows that command's corresponding help page.
+    const helpIndex = tokens.findIndex(
+      (token, index) => index > 0 && (token === "--help" || token === "-h"),
+    );
+    if (tokens.length === 1 || helpIndex >= 0) {
+      const helpPath = tokens.slice(1, helpIndex >= 0 ? helpIndex : tokens.length);
+      printPre(escapeHtml(formatProtectCliHelp(helpPath)));
       return true;
+    }
+
+    // Preserve the original rich demonstration help without making it the
+    // canonical CLI help output.
+    if (tokens[1] === "demo-help") {
+      printHtml(formatProtectDemoHelpText());
+      return true;
+    }
+
+    // `help` is a real clap subcommand. `protect help <path...>` behaves like
+    // asking for --help on that command.
+    if (tokens[1] === "help") {
+      printPre(escapeHtml(formatProtectCliHelp(tokens.slice(2))));
+      return true;
+    }
+
+    if (tokens[1] === "ocap") {
+      tokens = [...tokens];
+      tokens[1] = "object-capability";
     }
 
     if (tokens[1] === "image") {
@@ -2915,29 +4118,44 @@ vfio_pci`;
           return true;
         }
 
-        if (zone.name !== "zone-gpu" || zone.kernelVariant !== "nvidia") {
-          printHtml(
-            `<span style="color:#a8cfca;">No NVIDIA driver logs are available for zone "${escapeHtml(
-              zone.name,
-            )}".</span>`,
+        // The reference terminal exposes normal zone boot/runtime logs for a
+        // regular zone when --follow is used. Preserve the existing NVIDIA
+        // behavior for the GPU demo zone, but provide the reference-style IDM
+        // and memory-pressure logs for ordinary zones as well.
+        const follows = tokens.includes("--follow") || tokens.includes("-f");
+
+        if (zone.name === "zone-gpu" && zone.kernelVariant === "nvidia") {
+          printPre(
+            `<span style="color:#dff7f0;">${escapeHtml(
+              NVIDIA_ZONE_LOGS,
+            )}</span>`,
           );
+
+          addEvent(
+            "Normal",
+            "NvidiaDriverVerified",
+            `zone/${zone.name}`,
+            "NVIDIA driver initialized successfully",
+          );
+
+          markDemoStepComplete("gpu-zone-logs");
           return true;
         }
 
         printPre(
           `<span style="color:#dff7f0;">${escapeHtml(
-            NVIDIA_ZONE_LOGS,
+            PROTECT_ZONE_BOOT_LOGS,
           )}</span>`,
         );
 
-        addEvent(
-          "Normal",
-          "NvidiaDriverVerified",
-          `zone/${zone.name}`,
-          "NVIDIA driver initialized successfully",
-        );
+        if (follows) {
+          printHtml(
+            `<span style="color:#a8cfca;">Following logs for zone "${escapeHtml(
+              zone.name,
+            )}" (simulated).</span>`,
+          );
+        }
 
-        markDemoStepComplete("gpu-zone-logs");
         return true;
       }
 
@@ -2962,6 +4180,11 @@ vfio_pci`;
         for (let i = 3; i < tokens.length; i++) {
           if (tokens[i] === "--selector" || tokens[i] === "-l") selector = tokens[++i] || "";
           else if (tokens[i].startsWith("--selector=")) selector = tokens[i].slice(11);
+          // `-o`/`--output` takes a value. Without skipping it the format name
+          // was picked up as a positional zone identifier, so `--output yaml`
+          // filtered the list down to a zone literally named "yaml" and
+          // printed nothing.
+          else if (tokens[i] === "-o" || tokens[i] === "--output") i++;
           else if (!tokens[i].startsWith("-") && !identifier) identifier = tokens[i];
         }
         let zones = identifier ? protectZones.filter((zone) => zone.name === identifier || zone.uuid === identifier) : [...protectZones];
@@ -2975,13 +4198,7 @@ vfio_pci`;
           zones = zones.filter((zone) => zone.state === state);
         }
         const output = parseProtectOutputFormat(tokens);
-        if (output === "json" || output === "json-pretty") {
-          renderProtectZoneJson(zones, output === "json-pretty");
-        } else if (output === "jsonl") {
-          printPre(zones.map((zone) => escapeHtml(JSON.stringify({ name: zone.name, id: zone.uuid, state: zone.state }))).join("\n"));
-        } else {
-          renderProtectZoneList(zones);
-        }
+        renderProtectZoneOutput(zones, output);
 
         const hasDestroyedZone = protectZones.some(
           (zone) => zone.state === "destroyed",
@@ -3320,25 +4537,132 @@ vfio_pci`;
     if (tokens[1] === "host") {
       const subcommand = tokens[2];
       if (subcommand === "status") {
-        printPre(`<span style="color:#dff7f0;">protect-daemon    active (running)
-zones             ${protectZones.filter((zone) => zone.state !== "destroyed").length}
-workloads         ${protectWorkloads.filter((workload) => workload.state !== "destroyed").length}</span>`);
+        const host = PROTECT_HOST_STATUS;
+        const output = parseProtectOutputFormat(tokens);
+
+        // `protect host status` is host information. It should not be replaced
+        // with a summary of the simulated daemon/zones/workloads; those are
+        // separate resources in the Protect CLI.
+        const simple = [
+          `Host UUID: ${host.uuid}`,
+          `Host Domain: ${host.domain}`,
+          `Protect Version: ${host.version}`,
+          `Protect built from branch: ${host.branch}`,
+          `Protect last tag: ${host.lastTag}`,
+          `Protect revisions since tag: ${host.revisionsSinceTag}`,
+          `Protect git SHA-1: ${host.gitSha1}`,
+          `Host IPv4: ${host.ipv4}`,
+          `Host IPv6: ${host.ipv6}`,
+          `Host Ethernet Address: ${host.ethernetAddress}`,
+          `Hypervisor Free Memory: ${host.hypervisorFreeMemory} (${host.hypervisorFreeMemoryMiB} MiB)`,
+        ].join("\n");
+
+        if (output === "json" || output === "json-pretty") {
+          const payload = {
+            hostUuid: host.uuid,
+            hostDomain: host.domain,
+            protectVersion: host.version,
+            protectBuiltFromBranch: host.branch,
+            protectLastTag: host.lastTag,
+            protectRevisionsSinceTag: host.revisionsSinceTag,
+            protectGitSha1: host.gitSha1,
+            hostIpv4: host.ipv4,
+            hostIpv6: host.ipv6,
+            hostEthernetAddress: host.ethernetAddress,
+            hypervisorFreeMemory: host.hypervisorFreeMemory,
+            hypervisorFreeMemoryMiB: host.hypervisorFreeMemoryMiB,
+          };
+          printPre(
+            escapeHtml(
+              JSON.stringify(payload, null, output === "json-pretty" ? 2 : 0),
+            ),
+          );
+          return true;
+        }
+
+        if (output === "yaml") {
+          const yaml = [
+            `hostUuid: ${host.uuid}`,
+            `hostDomain: ${host.domain}`,
+            `protectVersion: ${host.version}`,
+            `protectBuiltFromBranch: ${host.branch}`,
+            `protectLastTag: ${host.lastTag}`,
+            `protectRevisionsSinceTag: ${host.revisionsSinceTag}`,
+            `protectGitSha1: ${host.gitSha1}`,
+            `hostIpv4: ${host.ipv4}`,
+            `hostIpv6: ${host.ipv6}`,
+            `hostEthernetAddress: ${host.ethernetAddress}`,
+            `hypervisorFreeMemory: ${host.hypervisorFreeMemory}`,
+            `hypervisorFreeMemoryMiB: ${host.hypervisorFreeMemoryMiB}`,
+          ].join("\n");
+          printPre(`<span style="color:#dff7f0;">${escapeHtml(yaml)}</span>`);
+          return true;
+        }
+
+        if (output === "key-value") {
+          const keyValue = [
+            `hostUuid=${host.uuid}`,
+            `hostDomain=${host.domain}`,
+            `protectVersion=${host.version}`,
+            `protectBuiltFromBranch=${host.branch}`,
+            `protectLastTag=${host.lastTag}`,
+            `protectRevisionsSinceTag=${host.revisionsSinceTag}`,
+            `protectGitSha1=${host.gitSha1}`,
+            `hostIpv4=${host.ipv4}`,
+            `hostIpv6=${host.ipv6}`,
+            `hostEthernetAddress=${host.ethernetAddress}`,
+            `hypervisorFreeMemory=${host.hypervisorFreeMemory}`,
+            `hypervisorFreeMemoryMiB=${host.hypervisorFreeMemoryMiB}`,
+          ].join("\n");
+          printPre(`<span style="color:#dff7f0;">${escapeHtml(keyValue)}</span>`);
+          return true;
+        }
+
+        // The default `simple` output is the format shown by the real terminal.
+        // `table` and `tree` are accepted by the CLI help but do not add useful
+        // structure to this flat host-status record, so they use the same data.
+        printPre(`<span style="color:#dff7f0;">${escapeHtml(simple)}</span>`);
         return true;
       }
       if (subcommand === "cpu-topology") {
-        printPre(`<span style="color:#dff7f0;">CPU TOPOLOGY
-Sockets: 1
-Cores:   4
-Threads: 8
+        const output = parseProtectOutputFormat(tokens);
 
-0 1 2 3 4 5 6 7</span>`);
+        if (output === "json" || output === "json-pretty") {
+          const topology = {
+            sockets: 1,
+            cores: 1,
+            threads: 2,
+            cpus: [
+              { id: 0, node: 0, socket: 0, core: 0, thread: 0, class: "Standard" },
+              { id: 1, node: 0, socket: 0, core: 0, thread: 1, class: "Standard" },
+            ],
+          };
+          printPre(
+            escapeHtml(
+              JSON.stringify(topology, null, output === "json-pretty" ? 2 : 0),
+            ),
+          );
+          return true;
+        }
+
+        printPre(
+          `<span style="color:#dff7f0;">CPU TOPOLOGY\n${escapeHtml(
+            PROTECT_CPU_TOPOLOGY,
+          )}</span>`,
+        );
         return true;
       }
+
       if (subcommand === "hv-debug-info") {
-        printPre(`<span style="color:#dff7f0;">Hypervisor: simulated-kvm
-Edera isolation: enabled
-Zones: ${protectZones.filter((zone) => zone.state !== "destroyed").length}
-Kernel isolation: enabled</span>`);
+        // The real command returns the hypervisor/Xen debug structure as JSON,
+        // rather than a short daemon summary. Keep the same top-level shape and
+        // populate the simulated domains from the zones currently in Webernetes.
+        const hvDebugInfo = buildProtectHvDebugInfo();
+        printPre(
+          `<span style="color:#dff7f0;">${escapeHtml(
+            JSON.stringify(hvDebugInfo),
+          )}</span>`,
+        );
         return true;
       }
       printHtml(`<span style="color:#ff7373;">Unknown protect host command: ${escapeHtml(tokens.slice(2).join(" "))}</span>`);
@@ -3346,7 +4670,7 @@ Kernel isolation: enabled</span>`);
     }
 
     printHtml(
-      `<span style="color:#ff7373;">Unknown protect command. Type "protect --help".</span>`,
+      `<span style="color:#ff7373;">Unknown protect command. Type "protect --help". For the interactive Webernetes reference, use "protect demo-help".</span>`,
     );
 
     return true;
@@ -3970,14 +5294,22 @@ Kernel isolation: enabled</span>`);
     }
     if (tokens[1] === "describe") {
       const resource = tokens[2];
-      const name = tokens[3];
       let requestedNamespace = "default";
+      let name = "";
 
-      for (let i = 4; i < tokens.length; i++) {
+      // kubectl accepts namespace flags before or after the resource name, e.g.
+      // `kubectl describe pod -n falco falco-edera-node-7d8f9` and
+      // `kubectl describe pod falco-edera-node-7d8f9 -n falco`.
+      // Find the first positional argument after the resource while consuming
+      // namespace flag values so the simulated command behaves the same way.
+      for (let i = 3; i < tokens.length; i++) {
         if (tokens[i] === "-n" || tokens[i] === "--namespace") {
           requestedNamespace = tokens[++i] || requestedNamespace;
         } else if (tokens[i].startsWith("--namespace=")) {
           requestedNamespace = tokens[i].split("=")[1] || requestedNamespace;
+        } else if (!tokens[i].startsWith("-")) {
+          name = tokens[i];
+          break;
         }
       }
 
@@ -3990,7 +5322,8 @@ Kernel isolation: enabled</span>`);
 
       if (resource === "pod" || resource === "pods") {
         const pod = pods.find(
-          (item) => item.name === name && item.namespace === "default",
+          (item) =>
+            item.name === name && item.namespace === requestedNamespace,
         );
 
         if (!pod) {
@@ -4512,6 +5845,10 @@ Kernel isolation: enabled</span>`);
         }
 
         printPre(html.trimEnd());
+
+        if (namespaceFilter === "falco" && filtered.some((pod) => pod.namespace === "falco")) {
+          markDemoStepComplete("falco-pods");
+        }
 
         return true;
       }
@@ -5141,12 +6478,34 @@ Kernel isolation: enabled</span>`);
       (tokens[2] === "pod" ||
         tokens[2] === "pods")
     ) {
-      const podName = tokens[3];
+      let requestedNamespace = "default";
+      let podName = "";
+
+      // kubectl accepts namespace flags before or after the pod name:
+      // `kubectl delete pod -n falco <name>`
+      // `kubectl delete pod <name> -n falco`
+      for (let i = 3; i < tokens.length; i++) {
+        if (tokens[i] === "-n" || tokens[i] === "--namespace") {
+          requestedNamespace = tokens[++i] || requestedNamespace;
+        } else if (tokens[i].startsWith("--namespace=")) {
+          requestedNamespace =
+            tokens[i].split("=")[1] || requestedNamespace;
+        } else if (!tokens[i].startsWith("-") && !podName) {
+          podName = tokens[i];
+        }
+      }
+
+      if (!podName) {
+        printHtml(
+          `<span style="color:#ff7373;">Usage: kubectl delete pod <name> [-n namespace]</span>`,
+        );
+        return true;
+      }
 
       const index = pods.findIndex(
         (pod) =>
           pod.name === podName &&
-          pod.namespace === "default",
+          pod.namespace === requestedNamespace,
       );
 
       if (index === -1) {
@@ -6024,15 +7383,6 @@ Kernel isolation: enabled</span>`);
           return;
         }
         if (tokens[0] === "kubectl") {
-          if (tokens[1] === "get" && tokens[2] === "pods" && tokens.includes("-n") && tokens[tokens.indexOf("-n") + 1] === "falco") {
-            printPre(
-              `<span style="color:#dff7f0;">NAME                                      READY   STATUS    RESTARTS   AGE
-falco-edera-node-7d8f9                   1/1     Running   0          2m</span>`,
-            );
-            markDemoStepComplete("falco-pods");
-            return;
-          }
-
           if (tokens[1] === "logs" && tokens.includes("-n") && tokens[tokens.indexOf("-n") + 1] === "falco") {
             falcoInstalled = true;
             falcoRunning = true;
@@ -6051,71 +7401,6 @@ falco-edera-node-7d8f9                   1/1     Running   0          2m</span>`
           if (handled) {
             return;
           }
-        }
-        if (tokens[0] === "curl") {
-          const url = rawCmd
-            .replace(/^curl\s+/, "")
-            .trim();
-
-          if (!isSimulatedCurlTarget(url)) {
-            printHtml(
-              `<span style="color:#ff7373;">curl: (6) Could not resolve host: this demo terminal only reaches the simulated cluster; external requests are disabled.</span>`,
-            );
-
-            addEvent(
-              "Warning",
-              "HttpBlocked",
-              "curl",
-              `Blocked external request: ${url}`,
-            );
-
-            return;
-          }
-
-          addEvent(
-            "Info",
-            "HttpRequest",
-            "curl",
-            `GET ${url}`,
-          );
-
-          try {
-            const response: any =
-              await cluster.fetch(url);
-
-            const text =
-              typeof response?.text === "function"
-                ? await response.text()
-                : response?.body || response;
-
-            printHtml(
-              `<span style="color:#dff7f0;">${escapeHtml(
-                String(text),
-              )}</span>`,
-            );
-
-            addEvent(
-              "Normal",
-              "HttpResponse",
-              "curl",
-              `200 OK from ${url}`,
-            );
-          } catch (error: any) {
-            printHtml(
-              `<span style="color:#ff7373;">curl: (7) Failed to connect: ${escapeHtml(
-                error?.message || String(error),
-              )}</span>`,
-            );
-
-            addEvent(
-              "Warning",
-              "HttpError",
-              "curl",
-              `Connection failed`,
-            );
-          }
-
-          return;
         }
         printHtml(
           `<span style="color:#ff7373;">command not found: ${escapeHtml(
